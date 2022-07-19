@@ -843,6 +843,15 @@ class TorchLibraryInit final {
   }
 };
 
+#ifdef BUILD_SPLIT_LIBTORCH_STATIC_LIBS
+class TorchLibraryInitOnce final {
+public:
+    TorchLibraryInitOnce (void(*fn)()) {
+        fn ();
+    }
+};
+#endif // BUILD_SPLIT_LIBTORCH_STATIC_LIBS
+
 } // namespace detail
 
 } // namespace torch
@@ -870,16 +879,33 @@ class TorchLibraryInit final {
 /// The `m` argument is bound to a torch::Library that is used to
 /// register operators.  There may only be one TORCH_LIBRARY()
 /// for any given namespace.
-#define TORCH_LIBRARY(ns, m)                                                   \
-  static void TORCH_LIBRARY_init_##ns(torch::Library&);                        \
-  static const torch::detail::TorchLibraryInit TORCH_LIBRARY_static_init_##ns( \
-      torch::Library::DEF,                                                     \
-      &TORCH_LIBRARY_init_##ns,                                                \
-      #ns,                                                                     \
-      c10::nullopt,                                                            \
-      __FILE__,                                                                \
-      __LINE__);                                                               \
+#if BUILD_SPLIT_LIBTORCH_STATIC_LIBS
+#define TORCH_LIBRARY(ns, m)                                                              \
+  static void TORCH_LIBRARY_init_##ns(torch::Library&);                                   \
+  void TORCH_LIBRARY_init_once_##ns () {                                                  \
+    static const torch::detail::TorchLibraryInit TORCH_LIBRARY_static_init_##ns(          \
+      torch::Library::DEF,                                                                \
+      &TORCH_LIBRARY_init_##ns,                                                           \
+      #ns,                                                                                \
+      c10::nullopt,                                                                       \
+      __FILE__,                                                                           \
+      __LINE__);                                                                          \
+  }                                                                                       \
+  static const torch::detail::TorchLibraryInitOnce TORCH_LIBRARY_static_init_once_##ns (  \
+      &TORCH_LIBRARY_init_once_##ns);                                                     \
   void TORCH_LIBRARY_init_##ns(torch::Library& m)
+#else
+#define TORCH_LIBRARY(ns, m)                                                              \
+  static void TORCH_LIBRARY_init_##ns(torch::Library&);                                   \
+    static const torch::detail::TorchLibraryInit TORCH_LIBRARY_static_init_##ns( \
+        torch::Library::DEF,                                                     \
+        &TORCH_LIBRARY_init_##ns,                                                \
+        #ns,                                                                     \
+        c10::nullopt,                                                            \
+        __FILE__,                                                                \
+        __LINE__);                                                               \
+  void TORCH_LIBRARY_init_##ns(torch::Library& m)
+#endif // BUILD_SPLIT_LIBTORCH_STATIC_LIBS
 
 /// \private
 ///
@@ -960,6 +986,33 @@ class TorchLibraryInit final {
 /// variable name collisions. This can happen if TORCH_LIBRARY_IMPL is called
 /// multiple times with the same namespace and dispatch key in the same
 /// translation unit.
+// #if BUILD_SPLIT_LIBTORCH_STATIC_LIBS
+#if 0
+#define _TORCH_LIBRARY_IMPL(ns, k, m, uid)                             \
+  static void C10_CONCATENATE(                                         \
+      TORCH_LIBRARY_IMPL_init_##ns##_##k##_, uid)(torch::Library&);    \
+  void C10_CONCATENATE(                                                \
+    TORCH_LIBRARY_IMPL_init_once_##ns##_##k##_, uid) () {              \
+  static const torch::detail::TorchLibraryInit C10_CONCATENATE(        \
+      TORCH_LIBRARY_IMPL_static_init_##ns##_##k##_, uid)(              \
+      torch::Library::IMPL,                                            \
+      c10::guts::if_constexpr<c10::impl::dispatch_key_allowlist_check( \
+          c10::DispatchKey::k)>(                                       \
+          []() {                                                       \
+            return &C10_CONCATENATE(                                   \
+                TORCH_LIBRARY_IMPL_init_##ns##_##k##_, uid);           \
+          },                                                           \
+          []() { return [](torch::Library&) -> void {}; }),            \
+      #ns,                                                             \
+      c10::make_optional(c10::DispatchKey::k),                         \
+      __FILE__,                                                        \
+      __LINE__);                                                       \
+  }                                                                    \
+  static const C10_CONCATENATE(torch::detail::TorchLibraryInitOnce TORCH_LIBRARY_IMPL_static_init_once_##ns##_##k##_, uid) (\
+    &C10_CONCATENATE(TORCH_LIBRARY_IMPL_init_once_##ns##_##k##_, uid)); \
+  void C10_CONCATENATE(                                                \
+      TORCH_LIBRARY_IMPL_init_##ns##_##k##_, uid)(torch::Library & m)
+#else
 #define _TORCH_LIBRARY_IMPL(ns, k, m, uid)                             \
   static void C10_CONCATENATE(                                         \
       TORCH_LIBRARY_IMPL_init_##ns##_##k##_, uid)(torch::Library&);    \
@@ -979,6 +1032,7 @@ class TorchLibraryInit final {
       __LINE__);                                                       \
   void C10_CONCATENATE(                                                \
       TORCH_LIBRARY_IMPL_init_##ns##_##k##_, uid)(torch::Library & m)
+#endif // BUILD_SPLIT_LIBTORCH_STATIC_LIBS
 
 // These are variants of the macros above which are to be used for testing (they
 // don't setup the static initializer, so you can control the visibility of

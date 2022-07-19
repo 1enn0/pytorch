@@ -170,6 +170,9 @@ cmake_dependent_option(
     "BUILD_CAFFE2" OFF)
 option(BUILD_SHARED_LIBS "Build libcaffe2.so" ON)
 cmake_dependent_option(
+    BUILD_SPLIT_LIBTORCH_STATIC_LIBS "Split libtorch into two static libs (due so library size limit on windows)" OFF
+    "NOT BUILD_SHARED_LIBS" OFF)
+cmake_dependent_option(
     CAFFE2_LINK_LOCAL_PROTOBUF "If set, build protobuf inside libcaffe2.so." ON
     "BUILD_SHARED_LIBS AND BUILD_CUSTOM_PROTOBUF" OFF)
 cmake_dependent_option(
@@ -719,6 +722,10 @@ endif()
 
 if(USE_FBGEMM)
   string(APPEND CMAKE_CXX_FLAGS " -DUSE_FBGEMM")
+  if(FBGEMM_LIBRARY_TYPE STREQUAL "static")
+    string(APPEND CMAKE_CXX_FLAGS " -DFBGEMM_STATIC")
+  endif()
+
 endif()
 
 if(USE_QNNPACK)

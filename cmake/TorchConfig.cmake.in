@@ -71,7 +71,12 @@ if(@BUILD_SHARED_LIBS@)
 else()
   add_library(torch STATIC IMPORTED) # set imported_location at the bottom
   #library need whole archive
-  append_wholearchive_lib_if_found(torch torch_cpu)
+  if(NOT @BUILD_SPLIT_LIBTORCH_STATIC_LIBS@)
+    append_wholearchive_lib_if_found(torch torch_cpu)
+  else()
+    append_wholearchive_lib_if_found(torch torch_cpu1 torch_cpu2)
+  endif()
+
   if(@USE_CUDA@)
     append_wholearchive_lib_if_found(torch_cuda c10_cuda)
   endif()
@@ -80,7 +85,7 @@ else()
   # shared library.
   # TODO: this list might be incomplete.
   append_torchlib_if_found(c10)
-  if(@BUILD_CAFFE2@)
+  if(@BUILD_CAFFE2@ OR (NOT @BUILD_SHARED_LIBS@ AND NOT @USE_FBGEMM@))
     append_torchlib_if_found(Caffe2_perfkernels_avx512 Caffe2_perfkernels_avx2 Caffe2_perfkernels_avx)
   endif()
 
@@ -100,7 +105,8 @@ else()
     append_torchlib_if_found(XNNPACK)
   endif()
 
-  append_torchlib_if_found(caffe2_protos protobuf-lite protobuf protoc)
+  # TODO: probably, the "lib" prefix is neccessary only on Win?
+  append_torchlib_if_found(caffe2_protos libprotobuf-lite libprotobuf libprotoc)
   append_torchlib_if_found(onnx onnx_proto)
 
   append_torchlib_if_found(foxi_loader fmt)

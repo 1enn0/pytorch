@@ -273,7 +273,7 @@ macro(caffe2_interface_library SRC DST)
     # property of the target.
     target_link_libraries(${DST} INTERFACE
         $<TARGET_PROPERTY:${SRC},INTERFACE_LINK_LIBRARIES>)
-  else()
+  elseif(NOT BUILD_SPLIT_LIBTORCH_STATIC_LIBS)
     message(FATAL_ERROR
         "You made a CMake build file error: target " ${SRC}
         " must be of type either STATIC_LIBRARY or SHARED_LIBRARY. However, "

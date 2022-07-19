@@ -832,7 +832,17 @@ set(Caffe2_CPU_SRCS ${Caffe2_CPU_SRCS_NON_AVX} ${Caffe2_CPU_SRCS_AVX2} ${Caffe2_
 # END formerly-libtorch sources
 # ==========================================================
 
-add_library(torch_cpu ${Caffe2_CPU_SRCS})
+if(BUILD_SPLIT_LIBTORCH_STATIC_LIBS AND MSVC AND NOT BUILD_SHARED_LIBS)
+  # we must split the library in two because the version with debug info get larger than 6GB, but
+  #  the limit for libraries is 4GB
+  add_library(torch_cpu OBJECT ${Caffe2_CPU_SRCS})
+
+  add_library(torch_cpu1 STATIC $<FILTER:$<TARGET_OBJECTS:torch_cpu>,INCLUDE,ATen>)
+  add_library(torch_cpu2 STATIC $<FILTER:$<TARGET_OBJECTS:torch_cpu>,EXCLUDE,ATen>)
+else()
+  add_library(torch_cpu ${Caffe2_CPU_SRCS})
+endif()
+
 if(HAVE_SOVERSION)
   set_target_properties(torch_cpu PROPERTIES
       VERSION ${TORCH_VERSION} SOVERSION ${TORCH_SOVERSION})
@@ -1573,7 +1583,10 @@ if(MSVC AND NOT BUILD_SHARED_LIBS)
   #
   # NB: This must be target_compile_definitions, not target_compile_options,
   # as the latter is not respected by nvcc
-  target_compile_definitions(torch_cpu PUBLIC "AT_CORE_STATIC_WINDOWS=1")
+  target_compile_definitions(torch_cpu PUBLIC AT_CORE_STATIC_WINDOWS=1)
+  if (BUILD_SPLIT_LIBTORCH_STATIC_LIBS)
+    target_compile_definitions(torch_cpu PUBLIC BUILD_SPLIT_LIBTORCH_STATIC_LIBS)
+  endif()
 endif()
 if(MSVC AND BUILD_SHARED_LIBS)
   # ONNX is linked statically and needs to be exported from this library
@@ -1581,7 +1594,7 @@ if(MSVC AND BUILD_SHARED_LIBS)
   target_compile_options(torch_cpu PRIVATE "-DONNX_BUILD_MAIN_LIB")
 endif()
 
-caffe2_interface_library(torch_cpu torch_cpu_library)
+  caffe2_interface_library(torch_cpu torch_cpu_library)
 
 if(USE_CUDA)
   caffe2_interface_library(torch_cuda torch_cuda_library)
@@ -1596,6 +1609,12 @@ endif()
 caffe2_interface_library(torch torch_library)
 
 install(TARGETS torch_cpu torch_cpu_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+if (BUILD_SPLIT_LIBTORCH_STATIC_LIBS)
+  caffe2_interface_library(torch_cpu1 torch_cpu1_library)
+  caffe2_interface_library(torch_cpu2 torch_cpu2_library)
+  install(TARGETS torch_cpu1 torch_cpu1_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  install(TARGETS torch_cpu2 torch_cpu2_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+endif()
 
 if(USE_CUDA)
   install(TARGETS torch_cuda torch_cuda_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
@@ -1608,7 +1627,11 @@ elseif(USE_ROCM)
 endif()
 install(TARGETS torch torch_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
-target_link_libraries(torch PUBLIC torch_cpu_library)
+if (NOT BUILD_SPLIT_LIBTORCH_STATIC_LIBS)
+  target_link_libraries(torch PUBLIC torch_cpu_library)
+else()
+  target_link_libraries(torch PUBLIC torch_cpu_library torch_cpu1_library torch_cpu2_library)
+endif()
 
 if(USE_CUDA)
   target_link_libraries(torch PUBLIC torch_cuda_library)
