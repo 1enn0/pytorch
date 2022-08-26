@@ -832,7 +832,36 @@ set(Caffe2_CPU_SRCS ${Caffe2_CPU_SRCS_NON_AVX} ${Caffe2_CPU_SRCS_AVX2} ${Caffe2_
 # END formerly-libtorch sources
 # ==========================================================
 
-add_library(torch_cpu ${Caffe2_CPU_SRCS})
+function(add_library_with_dummy_empty_file library_name)
+  # This is required for older versions of CMake, which don't allow
+  # specifying add_library() without a list of source files
+  set(DUMMY_EMPTY_FILE ${CMAKE_BINARY_DIR}/empty_${library_name}.cpp)
+
+  if(MSVC)
+    if(BUILD_SHARED_LIBS)
+      set(DUMMY_FILE_CONTENT "__declspec(dllexport) int ignore_this_library_placeholder_${library_name}(){return 0\\;}")
+    else()
+      set(DUMMY_FILE_CONTENT "int ignore_this_library_placeholder_${library_name}() {return 0\\;}")
+    endif()
+  else()
+    set(DUMMY_FILE_CONTENT "")
+  endif()
+
+  file(WRITE ${DUMMY_EMPTY_FILE} ${DUMMY_FILE_CONTENT})
+  add_library(${library_name} ${DUMMY_EMPTY_FILE})
+endfunction()
+
+if(BUILD_SPLIT_TORCH_CPU)
+  # we must split the library in two because the COFF size limit of 4 GB
+  # add_library(torch_cpu OBJECT ${Caffe2_CPU_SRCS})
+  add_library_with_dummy_empty_file(torch_cpu)
+  add_library(torch_cpu_1 STATIC $<FILTER:${Caffe2_CPU_SRCS},INCLUDE,ATen>)
+  add_library(torch_cpu_2 STATIC $<FILTER:${Caffe2_CPU_SRCS},EXCLUDE,ATen>)
+  torch_compile_options(torch_cpu_1)  # see cmake/public/utils.cmake
+  torch_compile_options(torch_cpu_2)  # see cmake/public/utils.cmake
+else()
+  add_library(torch_cpu ${Caffe2_CPU_SRCS})
+endif()
 if(HAVE_SOVERSION)
   set_target_properties(torch_cpu PROPERTIES
       VERSION ${TORCH_VERSION} SOVERSION ${TORCH_SOVERSION})
@@ -894,24 +923,13 @@ if(USE_LLVM AND LLVM_FOUND)
   endif()
 endif(USE_LLVM AND LLVM_FOUND)
 
-# This is required for older versions of CMake, which don't allow
-# specifying add_library() without a list of source files
-set(DUMMY_EMPTY_FILE ${CMAKE_BINARY_DIR}/empty.cpp)
-
-if(MSVC)
-  set(DUMMY_FILE_CONTENT "__declspec(dllexport) int ignore_this_library_placeholder(){return 0\\;}")
-else()
-  set(DUMMY_FILE_CONTENT "")
-endif()
-
-file(WRITE ${DUMMY_EMPTY_FILE} ${DUMMY_FILE_CONTENT})
 
 # Wrapper library for people who link against torch and expect both CPU and CUDA support
 # Contains "torch_cpu" and "torch_cuda"
-add_library(torch ${DUMMY_EMPTY_FILE})
+add_library_with_dummy_empty_file(torch)
 if(BUILD_SPLIT_CUDA)
   # When we split torch_cuda, we want a dummy torch_cuda library that contains both parts
-  add_library(torch_cuda ${DUMMY_EMPTY_FILE})
+  add_library_with_dummy_empty_file(torch_cuda)
 endif()
 if(HAVE_SOVERSION)
   set_target_properties(torch PROPERTIES
@@ -1592,6 +1610,17 @@ caffe2_interface_library(torch torch_library)
 
 install(TARGETS torch_cpu torch_cpu_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
+if (BUILD_SPLIT_TORCH_CPU)
+  caffe2_interface_library(torch_cpu_1 torch_cpu_1_library)
+  caffe2_interface_library(torch_cpu_2 torch_cpu_2_library)
+  install(TARGETS torch_cpu_1 torch_cpu_1_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  install(TARGETS torch_cpu_2 torch_cpu_2_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+
+  # hack: copy all include directores from torch_cpu to _1 and _2
+  target_include_directories(torch_cpu_1 PRIVATE $<TARGET_PROPERTY:torch_cpu,INCLUDE_DIRECTORIES>)
+  target_include_directories(torch_cpu_2 PRIVATE $<TARGET_PROPERTY:torch_cpu,INCLUDE_DIRECTORIES>)
+endif()
+
 if(USE_CUDA)
   install(TARGETS torch_cuda torch_cuda_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   if(BUILD_SPLIT_CUDA)
@@ -1604,6 +1633,9 @@ endif()
 install(TARGETS torch torch_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
 target_link_libraries(torch PUBLIC torch_cpu_library)
+if (BUILD_SPLIT_TORCH_CPU)
+  target_link_libraries(torch PUBLIC torch_cpu_library torch_cpu_1_library torch_cpu_2_library)
+endif()
 
 if(USE_CUDA)
   target_link_libraries(torch PUBLIC torch_cuda_library)
@@ -1849,6 +1881,9 @@ if(BUILD_TEST)
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} "${test_src}")
     target_link_libraries(${test_name} torch_library gtest_main)
+    if(BUILD_SPLIT_TORCH_CPU)
+      target_link_libraries(${test_name} torch_library gtest_main)
+    endif()
     if(USE_OPENMP)
       # -fopenmp is a compile time flag and as result not guaranteed
       # to link executable against OpenMP runtime library
