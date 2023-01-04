@@ -123,7 +123,6 @@ class QLinearUnpackWeightInt8 final {
 };
 
 TORCH_LIBRARY_IMPL(sparse, CatchAll, m) {
-  register_linear_params();
   m.impl(
       TORCH_SELECTIVE_NAME("sparse::qlinear_unpack"),
       TORCH_FN(QLinearUnpackWeightInt8::run));
