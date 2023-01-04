@@ -830,10 +830,10 @@ if(BUILD_SPLIT_TORCH_CPU)
   # we must split the library in two because the COFF size limit of 4 GB
   # add_library(torch_cpu OBJECT ${Caffe2_CPU_SRCS})
   add_library_with_dummy_empty_file(torch_cpu)
-  add_library(torch_cpu_1 STATIC $<FILTER:${Caffe2_CPU_SRCS},INCLUDE,ATen>)
-  add_library(torch_cpu_2 STATIC $<FILTER:${Caffe2_CPU_SRCS},EXCLUDE,ATen>)
-  torch_compile_options(torch_cpu_1)  # see cmake/public/utils.cmake
-  torch_compile_options(torch_cpu_2)  # see cmake/public/utils.cmake
+  add_library(torch_cpu_aten STATIC $<FILTER:${Caffe2_CPU_SRCS},INCLUDE,ATen>)
+  add_library(torch_cpu_torch STATIC $<FILTER:${Caffe2_CPU_SRCS},EXCLUDE,ATen>)
+  torch_compile_options(torch_cpu_aten)  # see cmake/public/utils.cmake
+  torch_compile_options(torch_cpu_torch)  # see cmake/public/utils.cmake
 else()
   add_library(torch_cpu ${Caffe2_CPU_SRCS})
 endif()
@@ -1515,14 +1515,14 @@ caffe2_interface_library(torch torch_library)
 install(TARGETS torch_cpu torch_cpu_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
 if (BUILD_SPLIT_TORCH_CPU)
-  caffe2_interface_library(torch_cpu_1 torch_cpu_1_library)
-  caffe2_interface_library(torch_cpu_2 torch_cpu_2_library)
-  install(TARGETS torch_cpu_1 torch_cpu_1_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  install(TARGETS torch_cpu_2 torch_cpu_2_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  caffe2_interface_library(torch_cpu_aten torch_cpu_aten_library)
+  caffe2_interface_library(torch_cpu_torch torch_cpu_torch_library)
+  install(TARGETS torch_cpu_aten torch_cpu_aten_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+  install(TARGETS torch_cpu_torch torch_cpu_torch_library EXPORT Caffe2Targets DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
-  # hack: copy all include directores from torch_cpu to _1 and _2
-  target_include_directories(torch_cpu_1 PRIVATE $<TARGET_PROPERTY:torch_cpu,INCLUDE_DIRECTORIES>)
-  target_include_directories(torch_cpu_2 PRIVATE $<TARGET_PROPERTY:torch_cpu,INCLUDE_DIRECTORIES>)
+  # hack: copy all include directores from torch_cpu to _aten and _torch
+  target_include_directories(torch_cpu_aten PRIVATE $<TARGET_PROPERTY:torch_cpu,INCLUDE_DIRECTORIES>)
+  target_include_directories(torch_cpu_torch PRIVATE $<TARGET_PROPERTY:torch_cpu,INCLUDE_DIRECTORIES>)
 endif()
 
 if(USE_CUDA)
@@ -1534,7 +1534,7 @@ install(TARGETS torch torch_library EXPORT Caffe2Targets DESTINATION "${TORCH_IN
 
 target_link_libraries(torch PUBLIC torch_cpu_library)
 if (BUILD_SPLIT_TORCH_CPU)
-  target_link_libraries(torch PUBLIC torch_cpu_library torch_cpu_1_library torch_cpu_2_library)
+  target_link_libraries(torch PUBLIC torch_cpu_library torch_cpu_aten_library torch_cpu_torch_library)
 endif()
 
 if(USE_CUDA)
