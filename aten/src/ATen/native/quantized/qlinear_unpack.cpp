@@ -13,6 +13,8 @@ and /cudnn/linear_unpack_impl.cpp, for cudnn.
 #include <torch/custom_class.h>
 #include <torch/library.h>
 
+int register_linear_params();
+
 namespace at {
 namespace native {
 namespace {
@@ -63,11 +65,13 @@ class QLinearUnpackWeightFp16Legacy final {
 };
 
 TORCH_LIBRARY_IMPL(quantized, CPU, m) {
+  register_linear_params();
   m.impl(TORCH_SELECTIVE_NAME("quantized::linear_unpack.legacy"), TORCH_FN(QLinearUnpackWeightInt8Legacy::run));
   m.impl(TORCH_SELECTIVE_NAME("quantized::linear_unpack_fp16.legacy"), TORCH_FN(QLinearUnpackWeightFp16Legacy::run));
 }
 
 TORCH_LIBRARY_IMPL(quantized, CatchAll, m) {
+  register_linear_params();
   m.impl(TORCH_SELECTIVE_NAME("quantized::linear_unpack"), TORCH_FN(QLinearUnpackWeightInt8::run));
   m.impl(TORCH_SELECTIVE_NAME("quantized::linear_unpack_fp16"), TORCH_FN(QLinearUnpackWeightFp16::run));
 }
