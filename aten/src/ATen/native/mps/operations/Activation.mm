@@ -13,8 +13,7 @@
 
 using namespace at::mps;
 
-namespace at {
-namespace native {
+namespace at::native {
 
 Tensor relu_mps(const Tensor& self) {
   using namespace mps;
@@ -341,6 +340,10 @@ TORCH_IMPL_FUNC(log_softmax_backward_mps_out) (
   ScalarType input_dtype,
   const Tensor& out) {
   using namespace mps;
+
+  if (output.numel() == 0) {
+    return;
+  }
 
   struct CachedGraph : public MPSCachedGraph
   {
@@ -1416,7 +1419,8 @@ TORCH_IMPL_FUNC(softplus_out_mps) (
       MPSScalar threshold_scalar = getMPSScalar(threshold, ScalarType::Float);
 
       @autoreleasepool {
-        string key = "softplus_out_mps:" + getTensorsStringKey({self});
+        string key = "softplus_out_mps:" + getTensorsStringKey({self}) + ":" +
+                      std::to_string(beta.to<double>()) + ":" + std::to_string(threshold.to<double>());
 
         CachedGraph* cachedGraph = static_cast<CachedGraph *>(cache_->LookUp(key));
         if(!cachedGraph) {
@@ -1521,7 +1525,8 @@ TORCH_IMPL_FUNC(softplus_backward_out_mps) (
       MPSStream* stream = getCurrentMPSStream();
 
       @autoreleasepool {
-        string key = "softplus_backward_out_mps:" + getTensorsStringKey({grad_output, self});
+        string key = "softplus_backward_out_mps:" + getTensorsStringKey({grad_output, self}) + ":" +
+                      std::to_string(beta.to<double>()) + ":" + std::to_string(threshold.to<double>());
 
         CachedGraph* cachedGraph = static_cast<CachedGraph *>(cache_->LookUp(key));
         if(!cachedGraph) {
@@ -2318,5 +2323,4 @@ Tensor hardswish_backward_mps(const Tensor& grad_output, const Tensor& self) {
   }
   return grad_input;
 }
-} // namespace native
-} // namespace at
+} // namespace at::native

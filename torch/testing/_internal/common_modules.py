@@ -23,8 +23,8 @@ from typing import List, Tuple, Type, Set, Dict
 MODULE_NAMESPACES: List[ModuleType] = [
     torch.nn.modules,
     torch.ao.nn.qat.modules,
-    torch.nn.quantizable.modules,
-    torch.nn.quantized.modules,
+    torch.ao.nn.quantizable.modules,
+    torch.ao.nn.quantized.modules,
     torch.ao.nn.quantized.modules,
 ]
 
@@ -33,7 +33,7 @@ MODULES_TO_SKIP: Set[Type] = {
     torch.nn.Module,  # abstract base class
     torch.nn.Container,  # deprecated
     torch.nn.NLLLoss2d,  # deprecated
-    torch.nn.quantized.MaxPool2d,  # aliases to nn.MaxPool2d
+    torch.ao.nn.quantized.MaxPool2d,  # aliases to nn.MaxPool2d
     torch.ao.nn.quantized.MaxPool2d,  # aliases to nn.MaxPool2d
 }
 
@@ -50,7 +50,10 @@ for namespace in MODULE_NAMESPACES:
     for module_name in namespace.__all__:  # type: ignore[attr-defined]
         module_cls = getattr(namespace, module_name)
         namespace_name = namespace.__name__.replace('torch.', '').replace('.modules', '')
-        MODULE_CLASS_NAMES[module_cls] = f'{namespace_name}.{module_name}'
+
+        # Deal with any aliases by preferring earlier names.
+        if module_cls not in MODULE_CLASS_NAMES:
+            MODULE_CLASS_NAMES[module_cls] = f'{namespace_name}.{module_name}'
 
 
 # Specifies the modes (i.e. train, eval) to test over.
@@ -111,20 +114,22 @@ class modules(_TestParametrizer):
                     def test_wrapper(*args, **kwargs):
                         return test(*args, **kwargs)
 
-                    for decorator in module_info.get_decorators(generic_cls.__name__, test.__name__,
-                                                                device_cls.device_type, dtype):
-                        test_wrapper = decorator(test_wrapper)
+                    decorator_fn = partial(module_info.get_decorators, generic_cls.__name__,
+                                           test.__name__, device_cls.device_type, dtype)
 
-                    yield (test_wrapper, test_name, param_kwargs)
+                    yield (test_wrapper, test_name, param_kwargs, decorator_fn)
                 except Exception as ex:
                     # Provides an error message for debugging before rethrowing the exception
                     print("Failed to instantiate {0} for module {1}!".format(test_name, module_info.name))
                     raise ex
 
 
-def get_module_fully_qualified_name(module_cls):
-    """ Returns the common name of the module class formatted for use in test names. """
-    return MODULE_CLASS_NAMES[module_cls]
+def get_module_common_name(module_cls):
+    if module_cls in MODULE_CLASS_NAMES:
+        # Example: "nn.Linear"
+        return MODULE_CLASS_NAMES[module_cls]
+    else:
+        return module_cls.__name__
 
 
 class FunctionInput(object):
@@ -184,11 +189,11 @@ class ModuleInfo(object):
         self.module_memformat_affects_out = module_memformat_affects_out
         self.train_and_eval_differ = train_and_eval_differ
 
-    def get_decorators(self, test_class, test_name, device, dtype):
+    def get_decorators(self, test_class, test_name, device, dtype, param_kwargs):
         result = [set_single_threaded_if_parallel_tbb]
         for decorator in self.decorators:
             if isinstance(decorator, DecorateInfo):
-                if decorator.is_active(test_class, test_name, device, dtype):
+                if decorator.is_active(test_class, test_name, device, dtype, param_kwargs):
                     result.extend(decorator.decorators)
             else:
                 result.append(decorator)
@@ -196,7 +201,7 @@ class ModuleInfo(object):
 
     @property
     def name(self):
-        return get_module_fully_qualified_name(self.module_cls)
+        return get_module_common_name(self.module_cls)
 
     @property
     def formatted_name(self):
@@ -1175,7 +1180,6 @@ module_db: List[ModuleInfo] = [
                    DecorateInfo(skipIfMps, 'TestModule', dtypes=[torch.float64]),
                    # This was wrongly being skipped before and needs investigation.
                    # See https://github.com/pytorch/pytorch/issues/80247
-                   DecorateInfo(unittest.expectedFailure, "TestModule", "test_memory_format", device_type='cpu'),
                    DecorateInfo(unittest.expectedFailure, "TestModule", "test_memory_format", device_type='cuda',
                                 dtypes=[torch.float64, torch.complex128]),
                    # These fail only on ROCm
@@ -1339,7 +1343,6 @@ module_db: List[ModuleInfo] = [
                    DecorateInfo(skipIfMps, 'TestModule', dtypes=[torch.float64]),
                    # This was wrongly being skipped before and needs investigation.
                    # See https://github.com/pytorch/pytorch/issues/80247
-                   DecorateInfo(unittest.expectedFailure, "TestModule", "test_memory_format", device_type='cpu'),
                    DecorateInfo(unittest.expectedFailure, "TestModule", "test_memory_format", device_type='cuda',
                                 dtypes=[torch.float64]),
                ),
