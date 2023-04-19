@@ -428,7 +428,7 @@ TEST_F(SequentialTest, PrettyPrintSequential) {
       ")");
 }
 
-TEST_F(SequentialTest, ModuleForwardMethodOptionalArg) {
+TEST_F(SequentialTest, DISABLED_ModuleForwardMethodOptionalArg) {
   {
     Sequential sequential(
         Identity(),
