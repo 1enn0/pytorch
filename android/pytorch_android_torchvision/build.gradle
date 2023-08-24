@@ -1,5 +1,5 @@
 apply plugin: 'com.android.library'
-apply plugin: 'maven'
+apply plugin: 'maven-publish'
 
 android {
     compileSdkVersion rootProject.compileSdkVersion
@@ -9,6 +9,8 @@ android {
     defaultConfig {
         minSdkVersion rootProject.minSdkVersion
         targetSdkVersion rootProject.targetSdkVersion
+        compileSdkVersion rootProject.compileSdkVersion
+        ndkVersion rootProject.ndkVersion
         versionCode 0
         versionName "0.1"
 
